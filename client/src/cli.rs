@@ -1,5 +1,24 @@
 use colored::Colorize;
+use std::error::Error;
 use std::io::{self, BufRead, ErrorKind, Write};
+// use std::path::Path;
+use tokio::net::TcpStream;
+use tokio::io::{AsyncReadExt};
+
+pub async fn engage_conection() -> Result<(), Box<dyn Error>> {
+    dotenvy::dotenv()?;
+    let socket = dotenvy::var("SOCKET")?;
+    let mut stream = TcpStream::connect(socket).await?;
+    let mut buffer = vec![0; 1024];
+    let n = stream.read(&mut buffer).await?;
+    let response = String::from_utf8_lossy(&buffer[..n]);
+    if response.contains("Error: Server full\n") {
+        println!("Server saturated closing client");
+        return Err(response.into());
+    }
+    println!("Connection secured");
+    Ok(())
+}
 
 pub fn read_user_input<R: BufRead>(inputer: &mut R) -> String {
     let mut usr_input = String::new();
