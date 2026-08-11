@@ -1,23 +1,65 @@
+//mod cli_struct;
+use crate::cli_struct::{StreamType, IOResult, ClientEnvironement};
 use colored::Colorize;
 use std::error::Error;
 use std::io::{self, BufRead, ErrorKind, Write};
 // use std::path::Path;
 use tokio::net::TcpStream;
-use tokio::io::{AsyncReadExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-pub async fn engage_conection() -> Result<(), Box<dyn Error>> {
+/*To handle handle error gracefully make Enum*/
+
+pub async fn engage_conection(env: &mut ClientEnvironement) -> Result<(StreamType, StreamType), Box<dyn Error>> {
+    let (mut reader, mut writer) = setup_client(&env).await?;
+    /*read for proto connection*/
+    handle_tcp_message(&mut reader, &env).await?;
+    /*write for the name*/
+    loop {
+        let res = handle_tcp_message(&mut writer, &env).await?;
+        match handle_tcp_message(&mut reader, &env).await? {
+            IOResult::Succes(name) => {
+                env.set_name(name.to_string());
+                break;
+            }
+            IOResult::Error(err_desc) => {
+                println!("{}", err_desc);
+            }
+        }
+    }
+    env.is_authenticate = true;
+    Ok((reader, writer))
+}
+
+pub async fn setup_client(env: &ClientEnvironement) -> Result<(StreamType, StreamType), Box<dyn Error>> {
     dotenvy::dotenv()?;
     let socket = dotenvy::var("SOCKET")?;
-    let mut stream = TcpStream::connect(socket).await?;
-    let mut buffer = vec![0; 1024];
-    let n = stream.read(&mut buffer).await?;
-    let response = String::from_utf8_lossy(&buffer[..n]);
-    if response.contains("Error: Server full\n") {
-        println!("Server saturated closing client");
-        return Err(response.into());
+    let stream = TcpStream::connect(socket).await?;
+    let (mut reader, mut writer) = stream.into_split();
+    Ok((StreamType::Read(reader), StreamType::Write(writer)))
+}
+
+pub async fn handle_tcp_message(stream: &mut StreamType, env: &ClientEnvironement) -> Result<IOResult, Box<dyn Error>> {
+    match stream {
+        StreamType::Read(ref mut reader) => {
+            let mut buffer = vec![0; 8192];
+            let n = reader.read(&mut buffer).await?;
+            let response = String::from_utf8_lossy(&buffer[..n]);
+            println!("TMP : readed {}", &response);
+            if response.contains("ERR ") {
+                return Ok(IOResult::Error(response.to_string()));
+            } else {
+                return Ok(IOResult::Succes(response.to_string()));
+            }
+        }
+        StreamType::Write(ref mut writer) => {
+            prompt_user(env);
+            let user_message = read_user_input(&mut io::stdin().lock());
+            /*Error hande*/
+            println!("TMP : writed {}", &user_message);
+            writer.write_all(&user_message.as_bytes());
+            return Ok(IOResult::Succes(user_message));
+        }
     }
-    println!("Connection secured");
-    Ok(())
 }
 
 pub fn read_user_input<R: BufRead>(inputer: &mut R) -> String {
@@ -33,9 +75,14 @@ pub fn read_user_input<R: BufRead>(inputer: &mut R) -> String {
     }
 }
 
-pub fn prompt_user() {
-    print!("{}", "Please enter your command !\n>>> ".bold());
-    io::stdout().flush().expect("Flush error");
+pub fn prompt_user(env: &ClientEnvironement) {
+    if env.is_authenticate {
+        let message = format!("{:?} please enter your command !\n>>> ", env.name);
+        print!("{}", message.bold());
+    } else {
+        print!("{}", "Please set your identity !\n>>> ".bold());
+    }
+    io::stdout().flush().expect("flush error");
 }
 
 pub fn display_banner() {
