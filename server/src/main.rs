@@ -33,7 +33,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 let _ = socket.write_all(message.as_bytes()).await?;
                 let env = envlock.clone();
                 let user = server.subscribe();
+                println!("AFTER SUBSCRIBE");
                 let _handle = tokio::spawn(async move {
+                    println!("IN TASK");
                     let _ = client_handler(socket, addr, env, user).await;
                 });
             }
@@ -78,6 +80,7 @@ async fn client_handler(mut socket: TcpStream, _addr: SocketAddr, env: Arc<RwLoc
 }
 
 async fn authentication(socket: &mut TcpStream, env: Arc<RwLock<Env>>) -> Result<String, Box<dyn Error>> {
+    println!("IN AUTH");
     loop {
         let name = handle_tcp_message(socket, Message::Read).await?;
         let reader = env.read().await;
@@ -102,7 +105,9 @@ async fn handle_tcp_message(socket: &mut TcpStream, mode: Message) -> Result<Str
         Message::Read => {
             let mut buffer = vec![0; 8192]; // PUT OUT MAGIC NUMBER
             let n = socket.read(&mut buffer).await?;
-            Ok(String::from_utf8_lossy(&buffer[..n]).to_string())
+            let res = String::from_utf8_lossy(&buffer[..n]).to_string();
+            println!("READED : {}", res);
+            Ok(res)
         }
     }
 }

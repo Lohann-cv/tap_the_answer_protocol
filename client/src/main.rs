@@ -12,13 +12,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let reader_handle = tokio::spawn(async move {
         loop {
-            cli::handle_tcp_message(&mut reader, &env_copy);
+            cli::handle_tcp_message(&mut reader, &env_copy).await;
         }
     });
 
     let writer_handle = tokio::spawn(async move {
         loop {
-            cli::handle_tcp_message(&mut writer, &env);
+            cli::handle_tcp_message(&mut writer, &env).await;
         }
     });
     let reader_result = reader_handle.await;

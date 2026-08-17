@@ -15,10 +15,9 @@ pub async fn engage_conection(env: &mut ClientEnvironement) -> Result<(StreamTyp
     handle_tcp_message(&mut reader, &env).await?;
     /*write for the name*/
     loop {
-        let res = handle_tcp_message(&mut writer, &env).await?;
+        let _ = handle_tcp_message(&mut writer, &env).await?;
         match handle_tcp_message(&mut reader, &env).await? {
-            IOResult::Succes(name) => {
-                env.set_name(name.to_string());
+            IOResult::Succes(_) => {
                 break;
             }
             IOResult::Error(err_desc) => {
@@ -56,8 +55,8 @@ pub async fn handle_tcp_message(stream: &mut StreamType, env: &ClientEnvironemen
             let user_message = read_user_input(&mut io::stdin().lock());
             /*Error hande*/
             println!("TMP : writed {}", &user_message);
-            writer.write_all(&user_message.as_bytes());
-            return Ok(IOResult::Succes(user_message));
+            writer.write_all(&user_message.as_bytes()).await;
+            return Ok(IOResult::Succes(user_message.to_string()));
         }
     }
 }
@@ -77,8 +76,7 @@ pub fn read_user_input<R: BufRead>(inputer: &mut R) -> String {
 
 pub fn prompt_user(env: &ClientEnvironement) {
     if env.is_authenticate {
-        let message = format!("{:?} please enter your command !\n>>> ", env.name);
-        print!("{}", message.bold());
+        print!("{}", "Please enter your command !\n>>> ".bold());
     } else {
         print!("{}", "Please set your identity !\n>>> ".bold());
     }

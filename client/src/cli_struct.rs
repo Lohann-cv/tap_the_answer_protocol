@@ -1,4 +1,5 @@
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+use std::fmt;
 
 #[derive(Debug)]
 pub enum StreamType {
@@ -38,5 +39,14 @@ impl ClientEnvironement {
 
     pub fn set_name(&mut self, name: String) {
         self.name = Some(name);
+    }
+}
+
+impl fmt::Display for IOResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            IOResult::Succes(message) => write!(f, "{}", message),
+            IOResult::Error(message) => write!(f, "{}", message),
+        }
     }
 }
