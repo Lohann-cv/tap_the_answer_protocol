@@ -1,18 +1,21 @@
 //mod cli_struct;
-use crate::cli_struct::{StreamType, IOResult, ClientEnvironement};
+use crate::cli_struct::{ClientEnvironement, IOResult, StreamType};
 use colored::Colorize;
 use std::error::Error;
 use std::io::{self, BufRead, ErrorKind, Write};
 // use std::path::Path;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 /*To handle handle error gracefully make Enum*/
 
-pub async fn engage_conection(env: &mut ClientEnvironement) -> Result<(StreamType, StreamType), Box<dyn Error>> {
+pub async fn engage_conection(
+    env: &mut ClientEnvironement,
+) -> Result<(StreamType, StreamType), Box<dyn Error>> {
     let (mut reader, mut writer) = setup_client(&env).await?;
     /*read for proto connection*/
     handle_tcp_message(&mut reader, &env).await?;
+    println!("TMP : AFTER HANDLE");
     /*write for the name*/
     loop {
         let _ = handle_tcp_message(&mut writer, &env).await?;
@@ -21,6 +24,12 @@ pub async fn engage_conection(env: &mut ClientEnvironement) -> Result<(StreamTyp
                 break;
             }
             IOResult::Error(err_desc) => {
+                if err_desc.contains("ERR 902 CONNECCTION_LOST") {
+                    return Err(Box::new(io::Error::new(
+                        ErrorKind::ConnectionAborted,
+                        "Connection lost",
+                    )));
+                }
                 println!("{}", err_desc);
             }
         }
@@ -29,7 +38,9 @@ pub async fn engage_conection(env: &mut ClientEnvironement) -> Result<(StreamTyp
     Ok((reader, writer))
 }
 
-pub async fn setup_client(env: &ClientEnvironement) -> Result<(StreamType, StreamType), Box<dyn Error>> {
+pub async fn setup_client(
+    env: &ClientEnvironement,
+) -> Result<(StreamType, StreamType), Box<dyn Error>> {
     dotenvy::dotenv()?;
     let socket = dotenvy::var("SOCKET")?;
     let stream = TcpStream::connect(socket).await?;
@@ -37,26 +48,32 @@ pub async fn setup_client(env: &ClientEnvironement) -> Result<(StreamType, Strea
     Ok((StreamType::Read(reader), StreamType::Write(writer)))
 }
 
-pub async fn handle_tcp_message(stream: &mut StreamType, env: &ClientEnvironement) -> Result<IOResult, Box<dyn Error>> {
+pub async fn handle_tcp_message(
+    stream: &mut StreamType,
+    env: &ClientEnvironement,
+) -> Result<IOResult, Box<dyn Error>> {
     match stream {
         StreamType::Read(ref mut reader) => {
-            let mut buffer = vec![0; 8192];
-            let n = reader.read(&mut buffer).await?;
-            let response = String::from_utf8_lossy(&buffer[..n]);
-            println!("TMP : readed {}", &response);
-            if response.contains("ERR ") {
-                return Ok(IOResult::Error(response.to_string()));
+            let mut reader = BufReader::new(reader);
+            let mut line = String::new();
+            let n = reader.read_line(&mut line).await?;
+            if n == 0 {
+                Ok(IOResult::Error(String::from("ERR 902 CONNECCTION_LOST")))
+            } else if line.contains("ERR") {
+                println!("ERROR");
+                Ok(IOResult::Error(line.to_string()))
             } else {
-                return Ok(IOResult::Succes(response.to_string()));
+                println!("TMP : readed {}", line);
+                Ok(IOResult::Succes(line.to_string()))
             }
         }
         StreamType::Write(ref mut writer) => {
             prompt_user(env);
             let user_message = read_user_input(&mut io::stdin().lock());
             /*Error hande*/
-            println!("TMP : writed {}", &user_message);
-            writer.write_all(&user_message.as_bytes()).await;
-            return Ok(IOResult::Succes(user_message.to_string()));
+            println!("TMP : writed {}", user_message);
+            let _ = writer.write_all(user_message.as_bytes()).await;
+            Ok(IOResult::Succes(user_message.to_string()))
         }
     }
 }

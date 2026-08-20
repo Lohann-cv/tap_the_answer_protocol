@@ -10,7 +10,7 @@ use tokio::sync::{OwnedSemaphorePermit, RwLock};
 pub struct ServerStatus {
     pub mpsc_tx: Arc<RwLock<HashMap<String, mpsc::Sender<String>>>>,
     pub broadcast_handle: (Sender<String>, Receiver<String>),
-    pub connected_users: u8,
+    pub connected_users: Arc<RwLock<u8>>,
     pub max_users: u8,
     pub socket: TcpListener,
 }
@@ -24,7 +24,7 @@ impl ServerStatus {
         Ok(Self {
             mpsc_tx: Arc::new(RwLock::new(HashMap::new())),
             broadcast_handle: broadcast::channel(max_user.into()),
-            connected_users: 0,
+            connected_users: Arc::new(RwLock::new(0)),
             max_users: max_user,
             socket: listener,
         })
@@ -42,6 +42,7 @@ impl ServerStatus {
             mpsc_tx,
             broadcast_tx: self.broadcast_handle.0.clone(),
             broadcast_rx: self.broadcast_handle.0.subscribe(),
+            connected_users: self.connected_users.clone(),
         }
     }
 }
@@ -53,4 +54,5 @@ pub struct User {
     pub mpsc_tx: Arc<RwLock<HashMap<String, mpsc::Sender<String>>>>,
     pub broadcast_tx: Sender<String>,
     pub broadcast_rx: Receiver<String>,
+    pub connected_users: Arc<RwLock<u8>>,
 }
