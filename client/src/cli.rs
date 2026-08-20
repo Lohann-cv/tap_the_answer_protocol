@@ -1,10 +1,8 @@
-//mod cli_struct;
 use crate::cli_struct::{ClientEnvironement, IOResult, StreamType};
 use colored::Colorize;
 use std::error::Error;
 use std::io::{self, BufRead, ErrorKind, Write};
-// use std::path::Path;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 
 /*To handle handle error gracefully make Enum*/
@@ -12,14 +10,11 @@ use tokio::net::TcpStream;
 pub async fn engage_conection(
     env: &mut ClientEnvironement,
 ) -> Result<(StreamType, StreamType), Box<dyn Error>> {
-    let (mut reader, mut writer) = setup_client(&env).await?;
-    /*read for proto connection*/
-    handle_tcp_message(&mut reader, &env).await?;
-    println!("TMP : AFTER HANDLE");
-    /*write for the name*/
+    let (mut reader, mut writer) = setup_client().await?;
+    handle_tcp_message(&mut reader, env).await?;
     loop {
-        let _ = handle_tcp_message(&mut writer, &env).await?;
-        match handle_tcp_message(&mut reader, &env).await? {
+        let _ = handle_tcp_message(&mut writer, env).await?;
+        match handle_tcp_message(&mut reader, env).await? {
             IOResult::Succes(_) => {
                 break;
             }
@@ -38,13 +33,11 @@ pub async fn engage_conection(
     Ok((reader, writer))
 }
 
-pub async fn setup_client(
-    env: &ClientEnvironement,
-) -> Result<(StreamType, StreamType), Box<dyn Error>> {
+pub async fn setup_client() -> Result<(StreamType, StreamType), Box<dyn Error>> {
     dotenvy::dotenv()?;
     let socket = dotenvy::var("SOCKET")?;
     let stream = TcpStream::connect(socket).await?;
-    let (mut reader, mut writer) = stream.into_split();
+    let (reader, writer) = stream.into_split();
     Ok((StreamType::Read(reader), StreamType::Write(writer)))
 }
 
@@ -60,18 +53,15 @@ pub async fn handle_tcp_message(
             if n == 0 {
                 Ok(IOResult::Error(String::from("ERR 902 CONNECCTION_LOST")))
             } else if line.contains("ERR") {
-                println!("ERROR");
                 Ok(IOResult::Error(line.to_string()))
             } else {
-                println!("TMP : readed {}", line);
+                println!("{}", line);
                 Ok(IOResult::Succes(line.to_string()))
             }
         }
         StreamType::Write(ref mut writer) => {
             prompt_user(env);
             let user_message = read_user_input(&mut io::stdin().lock());
-            /*Error hande*/
-            println!("TMP : writed {}", user_message);
             let _ = writer.write_all(user_message.as_bytes()).await;
             Ok(IOResult::Succes(user_message.to_string()))
         }

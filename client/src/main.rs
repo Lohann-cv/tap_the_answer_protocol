@@ -1,6 +1,5 @@
 mod cli;
 mod cli_struct;
-//use cli_struct::{StreamType, IOResult, ClientEnvironement};
 use std::error::Error;
 
 #[tokio::main]
