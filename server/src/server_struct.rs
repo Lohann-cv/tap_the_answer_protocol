@@ -1,52 +1,56 @@
-use tokio::sync::mpsc::{Sender};
 use std::collections::HashMap;
-use tokio::sync::broadcast;
+use std::error::Error;
+use std::sync::Arc;
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::broadcast::{self, Receiver, Sender};
+use tokio::sync::mpsc;
+use tokio::sync::{OwnedSemaphorePermit, RwLock};
 
 #[derive(Debug)]
-pub struct Env {
-    pub mpsc_tx: HashMap<String, Sender<String>>,
+pub struct ServerStatus {
+    pub mpsc_tx: Arc<RwLock<HashMap<String, mpsc::Sender<String>>>>,
+    pub broadcast_handle: (Sender<String>, Receiver<String>),
+    pub connected_users: u8,
+    pub max_users: u8,
+    pub socket: TcpListener,
 }
 
-impl Env {
-    pub fn new() -> Self {
-        Self {
-            mpsc_tx: HashMap::new(),
-        }
+impl ServerStatus {
+    pub async fn setup() -> Result<Self, Box<dyn Error>> {
+        dotenvy::dotenv()?;
+        let socket = dotenvy::var("SOCKET")?;
+        let max_user: u8 = dotenvy::var("MAX_USER")?.parse()?;
+        let listener = TcpListener::bind(socket).await?;
+        Ok(Self {
+            mpsc_tx: Arc::new(RwLock::new(HashMap::new())),
+            broadcast_handle: broadcast::channel(max_user.into()),
+            connected_users: 0,
+            max_users: max_user,
+            socket: listener,
+        })
     }
 
-    pub fn add_user(&mut self, name: String, tx: Sender<String>) {
-        self.mpsc_tx.insert(name, tx);
-    }
-
-    /*
-    pub fn get_sender(&self, name: String) -> Result<&Sender<String>, Box<dyn Error>> {
-        match self.mpsc_tx.get(&name) {
-            Some(tx) => Ok(tx),
-            None => Err("Name isn't there".into()),
+    pub fn init_user(
+        &self,
+        socket: TcpStream,
+        permit: OwnedSemaphorePermit,
+        mpsc_tx: Arc<RwLock<HashMap<String, mpsc::Sender<String>>>>,
+    ) -> User {
+        User {
+            socket,
+            permit,
+            mpsc_tx,
+            broadcast_tx: self.broadcast_handle.0.clone(),
+            broadcast_rx: self.broadcast_handle.0.subscribe(),
         }
     }
-    */
 }
 
 #[derive(Debug)]
 pub struct User {
-    pub tx: broadcast::Sender<String>,
-    pub rx: broadcast::Receiver<String>,
-}
-
-impl User {
-    pub fn new(size: u8) -> Self {
-        let (tx, rx) = broadcast::channel(size.into());
-        Self {
-            tx,
-            rx,
-        }
-    }
-
-    pub fn subscribe(&self) -> Self {
-        Self {
-            tx: self.tx.clone(),
-            rx: self.tx.subscribe(),
-        }
-    }
+    pub socket: TcpStream,
+    pub permit: OwnedSemaphorePermit,
+    pub mpsc_tx: Arc<RwLock<HashMap<String, mpsc::Sender<String>>>>,
+    pub broadcast_tx: Sender<String>,
+    pub broadcast_rx: Receiver<String>,
 }
